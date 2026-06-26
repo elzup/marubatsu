@@ -15,6 +15,24 @@ export const createState = (): GameState => ({
   winner: null,
 })
 
+// 席 = プレイヤーのマーク。X が 1P、O が 2P。
+export const SEATS: readonly Mark[] = ['X', 'O']
+
+// 空いている席を先着で割り当てる。両方埋まっていれば null (観戦)。
+export const assignSeat = (taken: readonly (Mark | null)[]): Mark | null =>
+  SEATS.find((seat) => !taken.includes(seat)) ?? null
+
+// X→1P / O→2P の表示名
+export const playerLabel = (mark: Mark): string => (mark === 'X' ? '1P' : '2P')
+
+// その Action を実行してよいか (権限判定)。観戦者(null)は何もできない。
+// move は手番のプレイヤーだけ、reset はどちらのプレイヤーでも可。
+export const canAct = (
+  action: Action,
+  mark: Mark | null,
+  state: GameState,
+): boolean => mark !== null && (action.type === 'reset' || mark === state.turn)
+
 const WIN_LINES = [
   [0, 1, 2], // 横 3 列
   [3, 4, 5],

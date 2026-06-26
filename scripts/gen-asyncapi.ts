@@ -8,7 +8,8 @@ import type { ZodTypeAny } from 'zod'
 import {
   moveSchema,
   resetSchema,
-  serverMessageSchema,
+  stateMessageSchema,
+  joinedMessageSchema,
 } from '../shared/messages'
 
 // Zod → JSON Schema (asyncapi に埋め込めるよう $schema キーは落とす)
@@ -46,6 +47,7 @@ const doc = {
         move: { $ref: '#/components/messages/Move' },
         reset: { $ref: '#/components/messages/Reset' },
         state: { $ref: '#/components/messages/State' },
+        joined: { $ref: '#/components/messages/Joined' },
       },
     },
   },
@@ -62,8 +64,11 @@ const doc = {
     receiveState: {
       action: 'receive',
       channel: { $ref: '#/channels/ws' },
-      summary: 'サーバ → クライアント: 最新盤面の同期',
-      messages: [{ $ref: '#/channels/ws/messages/state' }],
+      summary: 'サーバ → クライアント: 席の割り当てと最新盤面の同期',
+      messages: [
+        { $ref: '#/channels/ws/messages/joined' },
+        { $ref: '#/channels/ws/messages/state' },
+      ],
     },
   },
   components: {
@@ -77,7 +82,12 @@ const doc = {
       State: {
         name: 'state',
         title: '盤面の同期',
-        payload: payload(serverMessageSchema),
+        payload: payload(stateMessageSchema),
+      },
+      Joined: {
+        name: 'joined',
+        title: '席の割り当て (X=1P / O=2P / null=観戦)',
+        payload: payload(joinedMessageSchema),
       },
     },
   },

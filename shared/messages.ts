@@ -24,10 +24,19 @@ export const actionSchema = z.discriminatedUnion('type', [
 ])
 
 // --- サーバ → クライアント ---
-export const serverMessageSchema = z.object({
+export const stateMessageSchema = z.object({
   type: z.literal('state'),
   state: gameStateSchema,
 })
+// 参加時に割り当てられた席 (X=1P / O=2P / null=観戦)
+export const joinedMessageSchema = z.object({
+  type: z.literal('joined'),
+  mark: markSchema.nullable(),
+})
+export const serverMessageSchema = z.discriminatedUnion('type', [
+  stateMessageSchema,
+  joinedMessageSchema,
+])
 
 export type Mark = z.infer<typeof markSchema>
 export type Cell = z.infer<typeof cellSchema>

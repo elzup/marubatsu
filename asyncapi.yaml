@@ -22,6 +22,8 @@ channels:
         $ref: "#/components/messages/Reset"
       state:
         $ref: "#/components/messages/State"
+      joined:
+        $ref: "#/components/messages/Joined"
 operations:
   sendAction:
     action: send
@@ -35,8 +37,9 @@ operations:
     action: receive
     channel:
       $ref: "#/channels/ws"
-    summary: "サーバ → クライアント: 最新盤面の同期"
+    summary: "サーバ → クライアント: 席の割り当てと最新盤面の同期"
     messages:
+      - $ref: "#/channels/ws/messages/joined"
       - $ref: "#/channels/ws/messages/state"
 components:
   messages:
@@ -112,4 +115,24 @@ components:
         required:
           - type
           - state
+        additionalProperties: false
+    Joined:
+      name: joined
+      title: 席の割り当て (X=1P / O=2P / null=観戦)
+      payload:
+        type: object
+        properties:
+          type:
+            type: string
+            const: joined
+          mark:
+            anyOf:
+              - type: string
+                enum:
+                  - X
+                  - O
+              - type: "null"
+        required:
+          - type
+          - mark
         additionalProperties: false
