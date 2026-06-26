@@ -8,10 +8,9 @@ import {
   assignSeat,
   canAct,
   seatPresence,
-  type GameState,
-  type Mark,
 } from '../shared/game'
-import { actionSchema, tryJson } from '../shared/messages'
+import type { GameState, Mark } from '../shared/types'
+import { parseAction, tryParse } from '../shared/validate'
 import type { Env } from './index'
 
 export class RoomDO extends DurableObject<Env> {
@@ -48,13 +47,13 @@ export class RoomDO extends DurableObject<Env> {
 
   // クライアントから Action が届くたびに state を更新して全員へ配信
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
-    // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
-    const parsed = actionSchema.safeParse(tryJson(raw as string))
-    if (!parsed.success) return
+    // 受信メッセージは untrusted。手書きの parseAction で検証し、不正なら無視する。
+    const action = parseAction(tryParse(raw as string))
+    if (!action) return
     // 権限チェック: 観戦者や手番でないプレイヤーの操作は無視
     const mark = ws.deserializeAttachment() as Mark | null
-    if (!canAct(parsed.data, mark, this.state)) return
-    this.state = reduce(this.state, parsed.data)
+    if (!canAct(action, mark, this.state)) return
+    this.state = reduce(this.state, action)
     await this.ctx.storage.put('state', this.state) // 先に永続化してから配信
     this.broadcast()
   }

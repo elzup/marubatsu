@@ -14,7 +14,6 @@
     "deploy": "vite build && wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:asyncapi": "tsx scripts/gen-asyncapi.ts",
     "format": "prettier --write .",
     "prepare": "git config core.hooksPath .githooks || true"
   },
@@ -24,8 +23,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.6.0",
-    "react-use-websocket": "^4.13.0",
-    "zod": "^3.25.76"
+    "react-use-websocket": "^4.13.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240909.0",
@@ -42,8 +40,6 @@
     "typescript": "^5.6.2",
     "vite": "^5.4.0",
     "vitest": "^4.1.9",
-    "wrangler": "^4.105.0",
-    "yaml": "^2.9.0",
-    "zod-to-json-schema": "^3.25.2"
+    "wrangler": "^4.105.0"
   }
 }

@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import { FaXmark, FaRegCircle } from 'react-icons/fa6'
-import {
-  playerLabel,
-  type Mark,
-  type GameState,
-  type Action,
-  type SeatPresence,
-} from '../../shared/game'
+import { playerLabel } from '../../shared/game'
+import type {
+  Mark,
+  GameState,
+  Action,
+  SeatPresence,
+} from '../../shared/types'
 import { roomFromQuery } from '../../shared/room'
 import { useGame, type Status } from './useGame'
 

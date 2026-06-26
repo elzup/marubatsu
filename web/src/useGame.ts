@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import useWebSocket, { ReadyState } from 'react-use-websocket'
-import type { GameState, Action, Mark, SeatPresence } from '../../shared/game'
-import type { ServerMessage } from '../../shared/messages'
+import type {
+  GameState,
+  Action,
+  Mark,
+  SeatPresence,
+  ServerMessage,
+} from '../../shared/types'
 
 // 接続ライフサイクル。盤面 (state) とは別の関心事として明示的に持つ。
 export type Status = 'connecting' | 'open' | 'closed'

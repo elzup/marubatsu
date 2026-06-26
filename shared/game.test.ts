@@ -14,10 +14,8 @@ import {
   canAct,
   playerLabel,
   seatPresence,
-  type Mark,
-  type Action,
-  type GameState,
 } from './game'
+import type { Mark, Action, GameState } from './types'
 
 // サーバ実装と等価な、トランスポート抜きのゲーム卓。
 const createTable = () => {

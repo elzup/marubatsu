@@ -9,10 +9,9 @@ import {
   assignSeat,
   canAct,
   seatPresence,
-  type GameState,
-  type Mark,
 } from '../shared/game'
-import { actionSchema, tryJson } from '../shared/messages'
+import type { GameState, Mark } from '../shared/types'
+import { parseAction, tryParse } from '../shared/validate'
 import { roomFromQuery } from '../shared/room'
 
 const { app } = expressWs(express())
@@ -79,12 +78,12 @@ app.ws('/ws', (ws, req) => {
   broadcastPresence(room)
 
   ws.on('message', (raw) => {
-    // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
-    const parsed = actionSchema.safeParse(tryJson(raw.toString()))
-    if (!parsed.success) return
+    // 受信メッセージは untrusted。手書きの parseAction で検証し、不正なら無視する。
+    const action = parseAction(tryParse(raw.toString()))
+    if (!action) return
     // 権限チェック: 観戦者や手番でないプレイヤーの操作は無視
-    if (!canAct(parsed.data, room.players.get(ws) ?? null, room.state)) return
-    room.state = reduce(room.state, parsed.data)
+    if (!canAct(action, room.players.get(ws) ?? null, room.state)) return
+    room.state = reduce(room.state, action)
     broadcast(room)
   })
 
