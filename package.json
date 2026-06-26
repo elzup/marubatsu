@@ -12,6 +12,8 @@
     "build": "vite build",
     "start": "tsx server/app.ts",
     "deploy": "vite build && wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "gen:asyncapi": "tsx scripts/gen-asyncapi.ts",
     "format": "prettier --write .",
     "prepare": "git config core.hooksPath .githooks || true"
@@ -39,6 +41,7 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.2",
     "vite": "^5.4.0",
+    "vitest": "^4.1.9",
     "wrangler": "^4.105.0",
     "yaml": "^2.9.0",
     "zod-to-json-schema": "^3.25.2"
