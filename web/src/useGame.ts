@@ -11,8 +11,10 @@ export function useGame(room: string) {
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    // http(s)://… を ws(s)://… に変えて /ws につなぐ
-    const url = location.origin.replace(/^http/, 'ws') + `/ws?room=${room}`
+    // /ws?room=xxx を組み立てる。http→ws / https→wss に変えるだけ。
+    const url = new URL('/ws', location.href)
+    url.protocol = url.protocol.replace('http', 'ws')
+    url.searchParams.set('room', room)
     const ws = new WebSocket(url)
     wsRef.current = ws
 

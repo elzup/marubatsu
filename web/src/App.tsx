@@ -1,8 +1,9 @@
+import { roomFromQuery } from '../../shared/room'
 import { useGame } from './useGame'
 
 // URL の ?room=xxx でルームを決める (無ければ lobby)。
 // ex) http://localhost:3001/?room=abc
-const room = new URLSearchParams(location.search).get('room') || 'lobby'
+const room = roomFromQuery(new URLSearchParams(location.search))
 
 export function App() {
   const { state, send } = useGame(room)

@@ -9,6 +9,7 @@ import {
   type GameState,
   type Action,
 } from '../shared/game'
+import { roomFromQuery } from '../shared/room'
 
 const { app } = expressWs(express())
 const port = Number(process.env.PORT) || 3001
@@ -34,11 +35,9 @@ const broadcast = (room: Room) => {
 app.use(express.static('web/dist'))
 
 app.ws('/ws', (ws, req) => {
-  const roomId =
-    typeof req.query.room === 'string' && req.query.room
-      ? req.query.room
-      : 'lobby'
-  const room = getRoom(roomId)
+  // worker 側と同じ URL パースに統一 (req.url は "/ws?room=xxx")
+  const params = new URL(req.url, 'http://localhost').searchParams
+  const room = getRoom(roomFromQuery(params))
   room.sockets.add(ws)
 
   // 参加直後に現在の盤面を同期
