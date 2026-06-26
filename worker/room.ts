@@ -2,12 +2,8 @@
 // インスタンス内に盤面 state を持ち、接続中の全 WebSocket にブロードキャストする。
 // 盤面の更新ロジックは Render 側とまったく同じ shared/game.ts の reduce() を使う。
 import { DurableObject } from 'cloudflare:workers'
-import {
-  createState,
-  reduce,
-  type GameState,
-  type Action,
-} from '../shared/game'
+import { createState, reduce, type GameState } from '../shared/game'
+import { actionSchema, tryJson } from '../shared/messages'
 import type { Env } from './index'
 
 export class RoomDO extends DurableObject<Env> {
@@ -32,8 +28,10 @@ export class RoomDO extends DurableObject<Env> {
 
   // クライアントから Action が届くたびに state を更新して全員へ配信
   async webSocketMessage(_ws: WebSocket, raw: string | ArrayBuffer) {
-    const action = JSON.parse(raw as string) as Action
-    this.state = reduce(this.state, action)
+    // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
+    const parsed = actionSchema.safeParse(tryJson(raw as string))
+    if (!parsed.success) return
+    this.state = reduce(this.state, parsed.data)
     await this.ctx.storage.put('state', this.state) // 先に永続化してから配信
     this.broadcast()
   }

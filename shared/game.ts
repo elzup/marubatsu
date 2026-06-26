@@ -3,18 +3,11 @@
 //
 // 設計の肝: すべての state 更新を reduce() の 1 関数に集約する。
 // 「今の state」と「やりたいこと (Action)」を渡すと「次の state」が返る。これだけ。
+//
+// 型は messages.ts (Zod スキーマ) を正準とし、ここから取り込む。
+import type { Mark, Cell, GameState, Action } from './messages'
 
-export type Mark = 'X' | 'O'
-export type Cell = Mark | null
-
-export type GameState = {
-  board: Cell[] // 9 マス (0〜8)
-  turn: Mark // 次に打つ手番
-  winner: Mark | null // 勝者 (まだなら null)
-}
-
-// クライアントがサーバへ送る「やりたいこと」
-export type Action = { type: 'move'; index: number } | { type: 'reset' }
+export type { Mark, Cell, GameState, Action }
 
 export const createState = (): GameState => ({
   board: Array(9).fill(null),

@@ -3,12 +3,8 @@
 import express from 'express'
 import expressWs from 'express-ws'
 import type { WebSocket } from 'ws'
-import {
-  createState,
-  reduce,
-  type GameState,
-  type Action,
-} from '../shared/game'
+import { createState, reduce, type GameState } from '../shared/game'
+import { actionSchema, tryJson } from '../shared/messages'
 import { roomFromQuery } from '../shared/room'
 
 const { app } = expressWs(express())
@@ -44,8 +40,10 @@ app.ws('/ws', (ws, req) => {
   ws.send(JSON.stringify({ type: 'state', state: room.state }))
 
   ws.on('message', (raw) => {
-    const action = JSON.parse(raw.toString()) as Action
-    room.state = reduce(room.state, action)
+    // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
+    const parsed = actionSchema.safeParse(tryJson(raw.toString()))
+    if (!parsed.success) return
+    room.state = reduce(room.state, parsed.data)
     broadcast(room)
   })
 
