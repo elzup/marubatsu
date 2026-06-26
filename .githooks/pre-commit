@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# native git hook (husky 不使用)。core.hooksPath で有効化する:
+#   git config core.hooksPath .githooks   (npm install 時に prepare が自動実行)
+set -euo pipefail
+
+# staged な対象ファイルだけ prettier --check する
+mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '\.(ts|tsx|js|jsx|css|html|json|jsonc|ya?ml)$' || true)
+
+if [ ${#files[@]} -eq 0 ]; then
+  exit 0
+fi
+
+if ! npx prettier --check "${files[@]}"; then
+  echo ""
+  echo "✗ prettier 違反があります。次で整形してから commit してください:"
+  echo "    npx prettier --write ${files[*]}"
+  exit 1
+fi
