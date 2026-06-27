@@ -1,12 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { FaXmark, FaRegCircle } from 'react-icons/fa6'
 import { playerLabel } from '../../shared/game'
-import type {
-  Mark,
-  GameState,
-  Action,
-  SeatPresence,
-} from '../../shared/types'
+import type { Mark, GameState, Action, SeatPresence } from '../../shared/types'
 import { roomFromQuery } from '../../shared/room'
 import { useGame, type Status } from './useGame'
 
@@ -142,22 +137,22 @@ function Seats({
 }
 
 function SeatBadge({ mark, status }: { mark: Mark | null; status: Status }) {
-  // 未接続/接続中は席の話より先に接続状態を出す (観戦中と取り違えないため)
   if (status !== 'open') {
+    const label = status === 'closed' ? '未接続 (再接続中)' : '接続中…'
+
     return (
       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-        {status === 'closed' ? '未接続 (再接続中)' : '接続中…'}
+        {label}
       </span>
     )
   }
 
-  const style =
-    mark === 'X'
-      ? 'bg-rose-100 text-rose-700'
-      : mark === 'O'
-        ? 'bg-sky-100 text-sky-700'
-        : 'bg-slate-200 text-slate-600'
+  const badgeStyles: Record<Mark, string> = {
+    X: 'bg-rose-100 text-rose-700',
+    O: 'bg-sky-100 text-sky-700',
+  }
   const text = mark ? `あなた: ${playerLabel(mark)} (${mark})` : '観戦中'
+  const style = mark ? badgeStyles[mark] : 'bg-slate-200 text-slate-600'
 
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style}`}>
