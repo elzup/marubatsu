@@ -60,22 +60,6 @@ npm run web        # http://localhost:5173
 > 本番相当を 1 プロセスで確認したいときは `npm run build` 後に `npm run server` だけでよい
 > （express が `web/dist` を配信する）。
 
-## デプロイ
-
-### Render
-
-`render.yaml` をそのまま使う。`npm install && npm run build` でビルドし、`npm run start`
-(= `tsx server/app.ts`) で常駐。express が React 成果物の配信と `/ws` の両方を担当する。
-
-### Cloudflare
-
-```bash
-npm run deploy     # vite build → wrangler deploy
-```
-
-`wrangler.jsonc` で 1 ルーム = 1 Durable Object（無料プランでも使える SQLite-backed DO）。
-`/ws?room=xxx` は同名なら必ず同じ DO に届き、静的アセット (`web/dist`) は Worker が配信する。
-
 ## 割り切り (雛形)
 
 - 席は接続順で割り当て。認証はなく、再接続すると空いた席に入り直す
