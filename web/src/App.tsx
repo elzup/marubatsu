@@ -68,6 +68,33 @@ export function App() {
 // ランダムな部屋名 (英数 6 文字)
 const randomRoom = () => Math.random().toString(36).slice(2, 8)
 
+// 今いる room の URL をクリップボードにコピーして相手に共有するボタン
+function ShareButton({ room }: { room: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const share = async () => {
+    const url = new URL(location.href)
+    url.searchParams.set('room', room)
+    try {
+      await navigator.clipboard.writeText(url.toString())
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // https / localhost 以外などクリップボード不可の環境では何もしない
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={share}
+      className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium transition hover:bg-slate-100 active:scale-95"
+    >
+      {copied ? 'コピー済 ✓' : '共有'}
+    </button>
+  )
+}
+
 // 入室する部屋を選ぶ最低限の UI
 function RoomBar({
   room,
@@ -106,6 +133,7 @@ function RoomBar({
       >
         ランダム
       </button>
+      <ShareButton room={room} />
     </form>
   )
 }
