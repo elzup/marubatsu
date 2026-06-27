@@ -7,6 +7,7 @@ import {
   reduce,
   assignSeat,
   canAct,
+  seatPresence,
   type GameState,
   type Mark,
 } from '../shared/game'
@@ -40,6 +41,8 @@ export class RoomDO extends DurableObject<Env> {
     // 参加直後に席と現在の盤面を同期
     server.send(JSON.stringify({ type: 'joined', mark }))
     server.send(JSON.stringify({ type: 'state', state: this.state }))
+    // 自分の参加を含めた席の在席を全員へ知らせる (accept 後なので server も含まれる)
+    this.broadcastPresence()
     return new Response(null, { status: 101, webSocket: client })
   }
 
@@ -58,19 +61,32 @@ export class RoomDO extends DurableObject<Env> {
 
   // プレイヤーが抜けたら、空いた席を観戦者に渡す (自己回復 / 空席埋め)
   webSocketClose(ws: WebSocket) {
-    const left = ws.deserializeAttachment() as Mark | null
-    if (!left) return
     const others = this.ctx.getWebSockets().filter((s) => s !== ws)
-    if (others.some((s) => s.deserializeAttachment() === left)) return
-    const spectator = others.find((s) => s.deserializeAttachment() == null)
-    if (spectator) {
-      spectator.serializeAttachment(left)
-      spectator.send(JSON.stringify({ type: 'joined', mark: left }))
+    const left = ws.deserializeAttachment() as Mark | null
+    if (left && !others.some((s) => s.deserializeAttachment() === left)) {
+      const spectator = others.find((s) => s.deserializeAttachment() == null)
+      if (spectator) {
+        spectator.serializeAttachment(left)
+        spectator.send(JSON.stringify({ type: 'joined', mark: left }))
+      }
     }
+    // 退出 (と昇格) を反映した席の在席を、残った全員へ知らせる
+    this.broadcastPresence(others)
   }
 
   private broadcast() {
     const message = JSON.stringify({ type: 'state', state: this.state })
     this.ctx.getWebSockets().forEach((ws) => ws.send(message))
+  }
+
+  // 席の在席 (1P/2P が埋まっているか) を配信する。
+  // 切断処理中は閉じる socket を除いた sockets を渡す。
+  private broadcastPresence(sockets = this.ctx.getWebSockets()) {
+    const seats = sockets.map((s) => s.deserializeAttachment() as Mark | null)
+    const message = JSON.stringify({
+      type: 'presence',
+      seats: seatPresence(seats),
+    })
+    sockets.forEach((s) => s.send(message))
   }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import useWebSocket, { ReadyState } from 'react-use-websocket'
-import type { GameState, Action, Mark } from '../../shared/game'
+import type { GameState, Action, Mark, SeatPresence } from '../../shared/game'
 import type { ServerMessage } from '../../shared/messages'
 
 // 接続ライフサイクル。盤面 (state) とは別の関心事として明示的に持つ。
@@ -28,6 +28,8 @@ const wsUrl = (room: string): string => {
 export function useGame(room: string) {
   const [state, setState] = useState<GameState | null>(null)
   const [mark, setMark] = useState<Mark | null>(null)
+  // 1P(X)/2P(O) が在席しているか。接続/切断のたびにサーバから届く。
+  const [seats, setSeats] = useState<SeatPresence>({ X: false, O: false })
 
   const { sendJsonMessage, readyState } = useWebSocket(wsUrl(room), {
     shouldReconnect: () => true, // 切れたら自動で再接続
@@ -37,11 +39,12 @@ export function useGame(room: string) {
       const msg = JSON.parse(event.data) as ServerMessage
       if (msg.type === 'state') setState(msg.state)
       else if (msg.type === 'joined') setMark(msg.mark)
+      else if (msg.type === 'presence') setSeats(msg.seats)
     },
   })
 
   // サーバへ Action を送るだけ
   const send = (action: Action) => sendJsonMessage(action)
 
-  return { state, status: toStatus(readyState), mark, send }
+  return { state, status: toStatus(readyState), mark, seats, send }
 }

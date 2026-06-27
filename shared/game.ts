@@ -22,6 +22,16 @@ export const SEATS: readonly Mark[] = ['X', 'O']
 export const assignSeat = (taken: readonly (Mark | null)[]): Mark | null =>
   SEATS.find((seat) => !taken.includes(seat)) ?? null
 
+// 席の在席状況。接続中の席リスト (観戦者は null) から 1P(X)/2P(O) の埋まりを出す。
+// 観戦者の有無や人数は含めない。server / worker で共有し全員へ配信する。
+export type SeatPresence = { X: boolean; O: boolean }
+export const seatPresence = (
+  seats: readonly (Mark | null)[],
+): SeatPresence => ({
+  X: seats.includes('X'),
+  O: seats.includes('O'),
+})
+
 // X→1P / O→2P の表示名
 export const playerLabel = (mark: Mark): string => (mark === 'X' ? '1P' : '2P')
 

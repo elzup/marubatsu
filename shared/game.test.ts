@@ -13,6 +13,7 @@ import {
   assignSeat,
   canAct,
   playerLabel,
+  seatPresence,
   type Mark,
   type Action,
   type GameState,
@@ -185,5 +186,18 @@ describe('2人が対局を一通り進めるシナリオ', () => {
 
     expect(table.state.winner).toBeNull()
     expect(table.state.board.every((cell) => cell !== null)).toBe(true)
+  })
+})
+
+describe('seatPresence: 1P/2P の在席だけを表す', () => {
+  it('空席は false、埋まっていれば true', () => {
+    expect(seatPresence([])).toEqual({ X: false, O: false })
+    expect(seatPresence(['X'])).toEqual({ X: true, O: false })
+    expect(seatPresence(['X', 'O'])).toEqual({ X: true, O: true })
+  })
+
+  it('観戦者 (null) は在席に影響しない', () => {
+    expect(seatPresence(['X', null, null])).toEqual({ X: true, O: false })
+    expect(seatPresence([null, null])).toEqual({ X: false, O: false })
   })
 })

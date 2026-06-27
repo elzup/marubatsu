@@ -5,6 +5,7 @@ import {
   type Mark,
   type GameState,
   type Action,
+  type SeatPresence,
 } from '../../shared/game'
 import { roomFromQuery } from '../../shared/room'
 import { useGame, type Status } from './useGame'
@@ -30,7 +31,7 @@ export function App() {
     history.replaceState(null, '', url)
   }
 
-  const { state, status, mark, send } = useGame(room)
+  const { state, status, mark, seats, send } = useGame(room)
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-slate-100 p-6 text-slate-800">
@@ -38,6 +39,9 @@ export function App() {
 
       {/* key={room} で room 変更時に作り直し、入力欄を新しい room に初期化する */}
       <RoomBar key={room} room={room} onChange={changeRoom} />
+
+      {/* 1P/2P が在席しているかを接続者全員に見せる (観戦者の人数は出さない) */}
+      <Seats seats={seats} mark={mark} status={status} />
 
       <div className="flex flex-col items-center gap-5 rounded-2xl bg-white p-8 shadow-xl">
         {state ? (
@@ -100,6 +104,43 @@ function RoomBar({
   )
 }
 
+// 1P(X)/2P(O) の在席を全員に見せる。観戦者の有無・人数は扱わない。
+function Seats({
+  seats,
+  mark,
+  status,
+}: {
+  seats: SeatPresence
+  mark: Mark | null
+  status: Status
+}) {
+  // 接続できていないうちは在席情報が当てにならないので出さない
+  if (status !== 'open') return null
+
+  const seat = (seatMark: Mark, present: boolean) => {
+    const you = mark === seatMark
+    const dotColor = seatMark === 'X' ? 'text-rose-500' : 'text-sky-500'
+    return (
+      <span className="flex items-center gap-1.5">
+        <span className={present ? dotColor : 'text-slate-300'}>●</span>
+        <span className="font-medium">
+          {playerLabel(seatMark)} ({seatMark})
+        </span>
+        <span className="text-slate-400">
+          {present ? (you ? 'あなた' : '在席') : '空き'}
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex gap-5 text-xs text-slate-600">
+      {seat('X', seats.X)}
+      {seat('O', seats.O)}
+    </div>
+  )
+}
+
 function SeatBadge({ mark, status }: { mark: Mark | null; status: Status }) {
   // 未接続/接続中は席の話より先に接続状態を出す (観戦中と取り違えないため)
   if (status !== 'open') {
@@ -137,8 +178,14 @@ function Board({
   const { board, turn, winner } = state
   const isMyTurn = mark !== null && mark === turn && !winner
 
+  // 勝敗の表示は「自分から見て」出す。観戦者は中立に勝者を伝える。
+  // (全員に「勝者: ◯◯ 🎉」を出すと、負けた側が勝ったと勘違いするため)
   const label = winner
-    ? `勝者: ${playerLabel(winner)} (${winner}) 🎉`
+    ? mark === winner
+      ? 'あなたの勝ち 🎉'
+      : mark === null
+        ? `${playerLabel(winner)} (${winner}) の勝ち`
+        : 'あなたの負け…'
     : board.every(Boolean)
       ? '引き分け'
       : `手番: ${playerLabel(turn)} (${turn})`

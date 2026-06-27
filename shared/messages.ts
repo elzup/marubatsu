@@ -33,9 +33,16 @@ export const joinedMessageSchema = z.object({
   type: z.literal('joined'),
   mark: markSchema.nullable(),
 })
+// 席の在席状況 (1P=X / 2P=O が埋まっているか)。接続/切断のたびに全員へ配信する。
+// 観戦者の有無・人数は含めない。
+export const presenceMessageSchema = z.object({
+  type: z.literal('presence'),
+  seats: z.object({ X: z.boolean(), O: z.boolean() }),
+})
 export const serverMessageSchema = z.discriminatedUnion('type', [
   stateMessageSchema,
   joinedMessageSchema,
+  presenceMessageSchema,
 ])
 
 export type Mark = z.infer<typeof markSchema>

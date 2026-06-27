@@ -8,6 +8,7 @@ import {
   reduce,
   assignSeat,
   canAct,
+  seatPresence,
   type GameState,
   type Mark,
 } from '../shared/game'
@@ -29,10 +30,21 @@ const getRoom = (id: string): Room => {
   return room
 }
 
-const broadcast = (room: Room) => {
-  const message = JSON.stringify({ type: 'state', state: room.state })
-  room.players.forEach((_mark, ws) => ws.readyState === 1 && ws.send(message))
+// 接続中の全員へ同じメッセージを送る
+const sendAll = (room: Room, message: object) => {
+  const json = JSON.stringify(message)
+  room.players.forEach((_mark, ws) => ws.readyState === 1 && ws.send(json))
 }
+
+const broadcast = (room: Room) =>
+  sendAll(room, { type: 'state', state: room.state })
+
+// 席の在席 (1P/2P が埋まっているか) を全員へ配信する。接続/切断のたびに呼ぶ。
+const broadcastPresence = (room: Room) =>
+  sendAll(room, {
+    type: 'presence',
+    seats: seatPresence([...room.players.values()]),
+  })
 
 // プレイヤーが抜けて席 (freed) が空いたら、観戦者を 1 人昇格させる。
 // これで StrictMode の一時的な席枯れも自己回復し、本番でも空席を埋められる。
@@ -63,6 +75,8 @@ app.ws('/ws', (ws, req) => {
   // 参加直後に席と現在の盤面を同期
   ws.send(JSON.stringify({ type: 'joined', mark }))
   ws.send(JSON.stringify({ type: 'state', state: room.state }))
+  // 自分の参加を含めた在席状況を全員へ知らせる
+  broadcastPresence(room)
 
   ws.on('message', (raw) => {
     // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
@@ -78,6 +92,7 @@ app.ws('/ws', (ws, req) => {
     const left = room.players.get(ws)
     room.players.delete(ws)
     if (left) promoteSpectator(room, left) // 空いた席を観戦者に渡す
+    broadcastPresence(room) // 退出を反映した在席状況を残った全員へ
   })
 })
 
