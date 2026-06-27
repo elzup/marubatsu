@@ -9,9 +9,15 @@ import type { Mark, Cell, GameState, Action } from './messages'
 
 export type { Mark, Cell, GameState, Action }
 
+// マスを獲得するのに必要な連打数 (綱引きゲージの閾値)。
+// X が +1 / O が -1 を積み、±この値に届いた側がそのマスを取る。
+export const TAPS_TO_CLAIM = 5
+
 export const createState = (): GameState => ({
-  board: Array(9).fill(null),
-  turn: 'X',
+  phase: 'ready', // 両者のスタート待ちから始まる
+  board: Array(9).fill(null), // 確定したマス
+  meters: Array(9).fill(0), // 各マスの綱引きゲージ (正=X寄り / 負=O寄り)
+  ready: { X: false, O: false }, // 各プレイヤーがスタートを押したか
   winner: null,
 })
 
@@ -36,12 +42,25 @@ export const seatPresence = (
 export const playerLabel = (mark: Mark): string => (mark === 'X' ? '1P' : '2P')
 
 // その Action を実行してよいか (権限判定)。観戦者(null)は何もできない。
-// move は手番のプレイヤーだけ、reset はどちらのプレイヤーでも可。
+// speed はターンが無いので「誰の番か」は見ず、フェーズだけで判定する。
+//   reset … いつでも可 / ready … スタート待ち中のみ / tap … 対戦中のみ
 export const canAct = (
   action: Action,
   mark: Mark | null,
   state: GameState,
-): boolean => mark !== null && (action.type === 'reset' || mark === state.turn)
+): boolean => {
+  if (mark === null) return false
+  switch (action.type) {
+    case 'reset':
+      return true
+    case 'ready':
+      return state.phase === 'ready'
+    case 'tap':
+      return state.phase === 'playing'
+    default:
+      return false
+  }
+}
 
 const WIN_LINES = [
   [0, 1, 2], // 横 3 列
@@ -65,22 +84,43 @@ const calcWinner = (board: Cell[]): Mark | null => {
 
 // すべての state 更新はこの 1 関数に集約する (純粋・不変)。
 // 元の state は書き換えず、必ず新しいオブジェクトを返す。
-export const reduce = (state: GameState, action: Action): GameState => {
+// by = その操作をしたプレイヤーのマーク (server が socket の席から渡す)。
+export const reduce = (
+  state: GameState,
+  action: Action,
+  by: Mark,
+): GameState => {
   switch (action.type) {
     case 'reset':
       return createState()
 
-    case 'move': {
-      const { index } = action
-      // 決着済み or 埋まっているマスは無視 (state を変えず同じ参照を返す)
-      if (state.winner || state.board[index]) return state
+    case 'ready': {
+      // スタート待ち中のみ。両者が押した瞬間に playing へ = 同時スタート。
+      if (state.phase !== 'ready') return state
+      const ready = { ...state.ready, [by]: true }
+      const phase = ready.X && ready.O ? 'playing' : 'ready'
+      return { ...state, ready, phase }
+    }
 
-      const board = state.board.map((cell, i) =>
-        i === index ? state.turn : cell,
-      )
-      const winner = calcWinner(board)
-      const turn = winner ? state.turn : state.turn === 'X' ? 'O' : 'X'
-      return { board, turn, winner }
+    case 'tap': {
+      if (state.phase !== 'playing') return state
+      const { index } = action
+      // 既に確定したマスは触れない (state を変えず同じ参照を返す)
+      if (state.board[index]) return state
+
+      // 綱引き: X は +1 / O は -1 を積む。±閾値に届いた側がマスを獲得。
+      const value = state.meters[index] + (by === 'X' ? 1 : -1)
+      const claimed: Mark | null =
+        value >= TAPS_TO_CLAIM ? 'X' : value <= -TAPS_TO_CLAIM ? 'O' : null
+
+      const meters = state.meters.map((m, i) => (i === index ? value : m))
+      const board = claimed
+        ? state.board.map((cell, i) => (i === index ? claimed : cell))
+        : state.board
+      const winner = claimed ? calcWinner(board) : null
+      // 勝者が出る or 全マス埋まり (引き分け) で決着
+      const phase = winner || board.every(Boolean) ? 'finished' : 'playing'
+      return { ...state, board, meters, winner, phase }
     }
 
     default:

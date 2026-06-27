@@ -82,9 +82,11 @@ app.ws('/ws', (ws, req) => {
     // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
     const parsed = actionSchema.safeParse(tryJson(raw.toString()))
     if (!parsed.success) return
-    // 権限チェック: 観戦者や手番でないプレイヤーの操作は無視
-    if (!canAct(parsed.data, room.players.get(ws) ?? null, room.state)) return
-    room.state = reduce(room.state, parsed.data)
+    // 権限チェック: 観戦者や、フェーズに合わない操作は無視
+    const mark = room.players.get(ws) ?? null
+    if (!mark || !canAct(parsed.data, mark, room.state)) return
+    // 着手者のマーク (mark) を渡す。競合は WS 受信順 = この処理順で解決される。
+    room.state = reduce(room.state, parsed.data, mark)
     broadcast(room)
   })
 

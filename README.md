@@ -1,15 +1,20 @@
-# marubatsu
+# speed-marubatsu
 
-リアルタイム・ルーム制マルバツ (Tic Tac Toe)。WebSocket でブラウザ間に盤面を同期する。
+リアルタイム・ルーム制の **連打マルバツ**。WebSocket でブラウザ間に盤面を同期する。
 URL の `?room=xxx` でルームを分けて対戦する（**ルームマッチング型**）。
 
+ターン制ではなく、**両者そろって同時スタート → 空きマスを連打で奪い合う**。マスごとの
+綱引きゲージを先に振り切った側がそのマスを取り、先に 3 つ並べた方が勝ち。
+
 サーバが盤面の唯一の正本で、クライアント (React) は**届いた state をそのまま描くだけ**。
+
+> ベーシックな（ターン制の）マルバツは `sample/proper`・`sample/beginner` ブランチに分けてある。
 
 ## アーキテクチャ
 
 ```
 shared/messages.ts ← WS メッセージの正準 (Zod)。型導出 + 実行時検証 + asyncapi 生成
-shared/game.ts     ← ゲームの純粋ロジック。reduce(state, action) の 1 関数に集約 (全環境で共有)
+shared/game.ts     ← ゲームの純粋ロジック。reduce(state, action, by) の 1 関数に集約 (全環境で共有)
 shared/room.ts     ← ?room=xxx の解決 (DEFAULT_ROOM / roomFromQuery)
                        ├─ server/app.ts   … Render 用: Express + express-ws。ルームを Map で保持
                        └─ worker/          … Cloudflare 用: Worker + Durable Object
@@ -18,15 +23,20 @@ shared/room.ts     ← ?room=xxx の解決 (DEFAULT_ROOM / roomFromQuery)
 web/               ← React + Vite クライアント。WS の state を描画し Action を送るだけ
 ```
 
-**state 更新の設計**: すべての更新は `reduce(state, action)` に集約。Render も Cloudflare も
-「受信した Action を reduce に通して新しい state を作り、全員へブロードキャストする」だけ。
+**state 更新の設計**: すべての更新は `reduce(state, action, by)` に集約。Render も Cloudflare も
+「受信した Action を、着手者のマーク `by` 付きで reduce に通して新しい state を作り、全員へ
+ブロードキャストする」だけ。
 
-- クライアント → サーバ (Action): `{ type: 'move', index }` / `{ type: 'reset' }`
-- サーバ → クライアント: `{ type: 'joined', mark }` (席の割当) / `{ type: 'state', state: { board, turn, winner } }`
+- クライアント → サーバ (Action): `{ type: 'ready' }` (スタート) / `{ type: 'tap', index }` (連打) / `{ type: 'reset' }`
+- サーバ → クライアント: `{ type: 'joined', mark }` / `{ type: 'presence', seats }` / `{ type: 'state', state }`
+- `state` = `{ phase, board, meters, ready, winner }`（`phase`: ready→playing→finished、`meters`: 各マスの綱引きゲージ）
 
-**プレイヤー設計 (1P/2P)**: ルームへの先着で `X=1P` / `O=2P` を割り当て、3 人目以降は観戦
-(`mark: null`)。move は手番のプレイヤーだけ、reset はプレイヤーのみ許可する。この権限判定は
-`shared/game.ts` の `canAct()` で server / worker 共通。
+**ルール**: `ready` を両者が押すと `phase` が同時に `playing` へ（**同時スタート**）。`tap` は綱引きゲージを
+X は +1 / O は −1 動かし、`±TAPS_TO_CLAIM` に達したマスを獲得。**競合は WS 受信順**にサーバが処理して
+解決する（先に届いた連打が効く）。
+
+**プレイヤー設計 (1P/2P)**: ルームへの先着で `X=1P` / `O=2P`、3 人目以降は観戦 (`mark: null`)。
+観戦者は操作不可。権限・フェーズ判定は `shared/game.ts` の `canAct()` で server / worker 共通。
 
 ## WebSocket メッセージ定義
 
@@ -64,3 +74,4 @@ npm run web        # http://localhost:5173
 
 - 席は接続順で割り当て。認証はなく、再接続すると空いた席に入り直す
 - 勝敗判定は `shared/game.ts` の 8 ライン判定
+- 連打ゲージ (`TAPS_TO_CLAIM`) に減衰は無く、押し合いの純粋な総和で決まる（調整余地あり）

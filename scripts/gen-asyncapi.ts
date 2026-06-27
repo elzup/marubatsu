@@ -6,10 +6,12 @@ import { stringify } from 'yaml'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import type { ZodTypeAny } from 'zod'
 import {
-  moveSchema,
+  tapSchema,
+  readySchema,
   resetSchema,
   stateMessageSchema,
   joinedMessageSchema,
+  presenceMessageSchema,
 } from '../shared/messages'
 
 // Zod → JSON Schema (asyncapi に埋め込めるよう $schema キーは落とす)
@@ -27,10 +29,10 @@ const payload = (schema: ZodTypeAny) => {
 const doc = {
   asyncapi: '3.0.0',
   info: {
-    title: 'marubatsu WebSocket API',
+    title: 'speed-marubatsu WebSocket API',
     version: '2.0.0',
     description:
-      'リアルタイム・ルーム制マルバツ。/ws?room=xxx で接続し、Action を送って state を受け取る。',
+      'リアルタイム連打マルバツ。/ws?room=xxx で接続し、ready/tap を送って state を受け取る。',
   },
   servers: {
     local: { host: 'localhost:3001', protocol: 'ws', pathname: '/ws' },
@@ -44,10 +46,12 @@ const doc = {
         },
       },
       messages: {
-        move: { $ref: '#/components/messages/Move' },
+        tap: { $ref: '#/components/messages/Tap' },
+        ready: { $ref: '#/components/messages/Ready' },
         reset: { $ref: '#/components/messages/Reset' },
         state: { $ref: '#/components/messages/State' },
         joined: { $ref: '#/components/messages/Joined' },
+        presence: { $ref: '#/components/messages/Presence' },
       },
     },
   },
@@ -55,25 +59,36 @@ const doc = {
     sendAction: {
       action: 'send',
       channel: { $ref: '#/channels/ws' },
-      summary: 'クライアント → サーバ: 手を打つ / リセット',
+      summary: 'クライアント → サーバ: スタート / マスを連打 / リセット',
       messages: [
-        { $ref: '#/channels/ws/messages/move' },
+        { $ref: '#/channels/ws/messages/ready' },
+        { $ref: '#/channels/ws/messages/tap' },
         { $ref: '#/channels/ws/messages/reset' },
       ],
     },
     receiveState: {
       action: 'receive',
       channel: { $ref: '#/channels/ws' },
-      summary: 'サーバ → クライアント: 席の割り当てと最新盤面の同期',
+      summary: 'サーバ → クライアント: 席の割り当て・在席・最新盤面の同期',
       messages: [
         { $ref: '#/channels/ws/messages/joined' },
+        { $ref: '#/channels/ws/messages/presence' },
         { $ref: '#/channels/ws/messages/state' },
       ],
     },
   },
   components: {
     messages: {
-      Move: { name: 'move', title: 'マスに打つ', payload: payload(moveSchema) },
+      Tap: {
+        name: 'tap',
+        title: 'マスを連打する',
+        payload: payload(tapSchema),
+      },
+      Ready: {
+        name: 'ready',
+        title: 'スタートを押す (両者で同時スタート)',
+        payload: payload(readySchema),
+      },
       Reset: {
         name: 'reset',
         title: 'リセット',
@@ -88,6 +103,11 @@ const doc = {
         name: 'joined',
         title: '席の割り当て (X=1P / O=2P / null=観戦)',
         payload: payload(joinedMessageSchema),
+      },
+      Presence: {
+        name: 'presence',
+        title: '1P/2P の在席',
+        payload: payload(presenceMessageSchema),
       },
     },
   },

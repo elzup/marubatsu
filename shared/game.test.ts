@@ -1,11 +1,11 @@
-// 「2人が参加して 1 局を一通り進める」シナリオのテスト。
+// スピードマルバツのルールのテスト。
 //
 // サーバ実装 (server/app.ts / worker/room.ts) はどちらも
 //   1. assignSeat で席を割り当て
-//   2. canAct で権限を判定し
-//   3. reduce で盤面を更新する
-// という同じ手順を踏む。ここでは WebSocket トランスポートを抜いて
-// この 3 ステップだけを再現する「最小ゲーム卓」を用意し、対局の流れを検証する。
+//   2. canAct で権限・フェーズを判定し
+//   3. reduce(state, action, by) で state を更新する
+// という同じ手順を踏む。ここでは WS トランスポートを抜いてこの 3 ステップだけを
+// 再現する「最小ゲーム卓」を用意し、同時スタートと連打の奪い合いを検証する。
 import { describe, it, expect } from 'vitest'
 import {
   createState,
@@ -14,12 +14,12 @@ import {
   canAct,
   playerLabel,
   seatPresence,
+  TAPS_TO_CLAIM,
   type Mark,
   type Action,
   type GameState,
 } from './game'
 
-// サーバ実装と等価な、トランスポート抜きのゲーム卓。
 const createTable = () => {
   let state: GameState = createState()
   const seats: (Mark | null)[] = []
@@ -31,15 +31,11 @@ const createTable = () => {
       seats.push(mark)
       return mark
     },
-    // 着手を試みて「実際に局面が変わったか」を返す。
-    // - 権限が無い (観戦者 / 手番でない) → canAct で弾いて false
-    // - 権限はあるが無効な手 (埋まったマス / 決着後) → reduce が同じ state を
-    //   返す (純粋・不変なので参照も同じ) ので false
-    // サーバ実装では canAct を通れば reduce → broadcast まで進むが、
-    // テストでは「その手が盤面を進めたか」を見たいのでこの判定にする。
+    // 操作を試みて「実際に state が変わったか」を返す。
+    // 観戦者 / フェーズ違い / 取られたマス等は弾かれ false。
     act(mark: Mark | null, action: Action): boolean {
-      if (!canAct(action, mark, state)) return false
-      const next = reduce(state, action)
+      if (mark === null || !canAct(action, mark, state)) return false
+      const next = reduce(state, action, mark)
       const changed = next !== state
       state = next
       return changed
@@ -50,98 +46,163 @@ const createTable = () => {
   }
 }
 
-const move = (index: number): Action => ({ type: 'move', index })
+const tap = (index: number): Action => ({ type: 'tap', index })
+const ready = (): Action => ({ type: 'ready' })
 const reset = (): Action => ({ type: 'reset' })
 
-describe('2人が対局を一通り進めるシナリオ', () => {
+// 両者スタートして playing にする
+const startGame = (
+  t: ReturnType<typeof createTable>,
+  x: Mark | null,
+  o: Mark | null,
+) => {
+  t.act(x, ready())
+  t.act(o, ready())
+}
+
+// by が index を満タン連打して獲得する (相手の妨害が無い前提)
+const claim = (
+  t: ReturnType<typeof createTable>,
+  by: Mark | null,
+  index: number,
+) => {
+  for (let i = 0; i < TAPS_TO_CLAIM; i++) t.act(by, tap(index))
+}
+
+describe('席の割り当て', () => {
   it('先着順に 1P=X / 2P=O が割り当てられ、3人目は観戦になる', () => {
     const table = createTable()
 
-    const p1 = table.join()
-    const p2 = table.join()
-    const p3 = table.join()
-
-    expect(p1).toBe('X')
-    expect(p2).toBe('O')
-    expect(p3).toBeNull()
+    expect(table.join()).toBe('X')
+    expect(table.join()).toBe('O')
+    expect(table.join()).toBeNull()
     expect(playerLabel('X')).toBe('1P')
     expect(playerLabel('O')).toBe('2P')
   })
+})
 
-  it('交互に着手して 1P(X) が上段そろえて勝つ', () => {
-    const table = createTable()
-    const x = table.join() // X (1P)
-    const o = table.join() // O (2P)
-
-    // 盤面の添字
-    //  0 1 2
-    //  3 4 5
-    //  6 7 8
-    expect(table.act(x, move(0))).toBe(true) // X
-    expect(table.act(o, move(3))).toBe(true) // O
-    expect(table.act(x, move(1))).toBe(true) // X
-    expect(table.act(o, move(4))).toBe(true) // O
-    expect(table.act(x, move(2))).toBe(true) // X → 上段 [0,1,2] そろう
-
-    expect(table.state.winner).toBe('X')
-    // 勝利が確定したら手番は進めない (winner 側のまま)
-    expect(table.state.turn).toBe('X')
-    expect(table.state.board).toEqual([
-      'X',
-      'X',
-      'X',
-      'O',
-      'O',
-      null,
-      null,
-      null,
-      null,
-    ])
-  })
-
-  it('手番でないプレイヤー・観戦者・埋まったマスへの着手は通らない', () => {
-    const table = createTable()
-    const x = table.join()
-    const o = table.join()
-    const spectator = table.join() // null
-
-    // 初手は X の番。O が先に打とうとしても拒否される
-    expect(table.act(o, move(0))).toBe(false)
-    // 観戦者は手番に関係なく何も打てない
-    expect(table.act(spectator, move(0))).toBe(false)
-
-    // X が正しく着手 → 手番が O に移る
-    expect(table.act(x, move(0))).toBe(true)
-    expect(table.state.turn).toBe('O')
-
-    // O の番だが「埋まったマス」に打つと無効手として弾かれ (false)、
-    // 盤面も手番も変わらない (O のまま)
-    const before = table.state.board
-    expect(table.act(o, move(0))).toBe(false)
-    expect(table.state.board).toEqual(before)
-    expect(table.state.turn).toBe('O')
-  })
-
-  it('決着後は両者とも着手できない', () => {
+describe('同時スタート (ready)', () => {
+  it('片方だけ ready では始まらず、両者そろって playing になる', () => {
     const table = createTable()
     const x = table.join()
     const o = table.join()
 
-    // X を上段で勝たせる
-    table.act(x, move(0))
-    table.act(o, move(3))
-    table.act(x, move(1))
-    table.act(o, move(4))
-    table.act(x, move(2))
-    expect(table.state.winner).toBe('X')
+    expect(table.act(x, ready())).toBe(true)
+    expect(table.state.phase).toBe('ready') // 片方だけではまだ
+    expect(table.state.ready).toEqual({ X: true, O: false })
 
-    // 勝者確定後、手番は X のまま。O は手番でないので拒否
-    expect(table.act(o, move(5))).toBe(false)
-    // X は手番だが決着済みなので無効手として弾かれ、盤面は不変
-    const settled = table.state.board
-    expect(table.act(x, move(5))).toBe(false)
-    expect(table.state.board).toEqual(settled)
+    expect(table.act(o, ready())).toBe(true)
+    expect(table.state.phase).toBe('playing') // 両者そろって同時スタート
+  })
+
+  it('playing になる前は tap できない', () => {
+    const table = createTable()
+    const x = table.join()
+    table.join()
+
+    expect(table.act(x, tap(0))).toBe(false)
+    expect(table.state.board[0]).toBeNull()
+  })
+
+  it('観戦者は ready も tap もできない', () => {
+    const table = createTable()
+    table.join()
+    table.join()
+    const spectator = table.join()
+
+    expect(table.act(spectator, ready())).toBe(false)
+  })
+})
+
+describe('連打でマスを奪い合う (綱引き)', () => {
+  it('閾値ぶん連打した側がマスを獲得する', () => {
+    const table = createTable()
+    const x = table.join()
+    const o = table.join()
+    startGame(table, x, o)
+
+    for (let i = 0; i < TAPS_TO_CLAIM; i++) table.act(x, tap(0))
+
+    expect(table.state.board[0]).toBe('X')
+    expect(table.state.meters[0]).toBe(TAPS_TO_CLAIM)
+  })
+
+  it('相手の連打でゲージは押し戻され、上回った側が取る', () => {
+    const table = createTable()
+    const x = table.join()
+    const o = table.join()
+    startGame(table, x, o)
+
+    // X が 4・O が 4 → 綱引きは互角 (0)。まだ誰のものでもない
+    for (let i = 0; i < TAPS_TO_CLAIM - 1; i++) table.act(x, tap(0))
+    for (let i = 0; i < TAPS_TO_CLAIM - 1; i++) table.act(o, tap(0))
+    expect(table.state.board[0]).toBeNull()
+    expect(table.state.meters[0]).toBe(0)
+
+    // そこから O が閾値ぶん連打 → O が獲得
+    for (let i = 0; i < TAPS_TO_CLAIM; i++) table.act(o, tap(0))
+    expect(table.state.board[0]).toBe('O')
+  })
+
+  it('取られたマスはもう連打できない', () => {
+    const table = createTable()
+    const x = table.join()
+    const o = table.join()
+    startGame(table, x, o)
+
+    claim(table, x, 0)
+    expect(table.state.board[0]).toBe('X')
+
+    expect(table.act(o, tap(0))).toBe(false) // 確定済みは無効
+    expect(table.state.board[0]).toBe('X')
+  })
+})
+
+describe('決着', () => {
+  it('3 マスそろえた側が勝ち、phase は finished になる', () => {
+    const table = createTable()
+    const x = table.join()
+    const o = table.join()
+    startGame(table, x, o)
+
+    claim(table, x, 0)
+    claim(table, x, 1)
+    claim(table, x, 2) // 上段そろう
+
     expect(table.state.winner).toBe('X')
+    expect(table.state.phase).toBe('finished')
+  })
+
+  it('決着後は tap できない', () => {
+    const table = createTable()
+    const x = table.join()
+    const o = table.join()
+    startGame(table, x, o)
+    claim(table, x, 0)
+    claim(table, x, 1)
+    claim(table, x, 2)
+
+    expect(table.act(o, tap(5))).toBe(false)
+    expect(table.act(x, tap(5))).toBe(false)
+  })
+
+  it('勝者なしで全マス埋まると引き分け (finished・winner null)', () => {
+    const table = createTable()
+    const x = table.join()
+    const o = table.join()
+    startGame(table, x, o)
+
+    //  X O X
+    //  X O O
+    //  O X X
+    const xCells = [0, 2, 3, 7, 8]
+    const oCells = [1, 4, 5, 6]
+    xCells.forEach((i) => claim(table, x, i))
+    oCells.forEach((i) => claim(table, o, i))
+
+    expect(table.state.winner).toBeNull()
+    expect(table.state.phase).toBe('finished')
+    expect(table.state.board.every((cell) => cell !== null)).toBe(true)
   })
 
   it('reset はどちらのプレイヤーからでも実行でき、観戦者は不可', () => {
@@ -149,43 +210,12 @@ describe('2人が対局を一通り進めるシナリオ', () => {
     const x = table.join()
     const o = table.join()
     const spectator = table.join()
+    startGame(table, x, o)
+    claim(table, x, 4)
 
-    table.act(x, move(4))
-    expect(table.state.board[4]).toBe('X')
-
-    // 観戦者の reset は無視される
     expect(table.act(spectator, reset())).toBe(false)
-    // 手番でない O でも reset はできる (reset は手番に依らない)
     expect(table.act(o, reset())).toBe(true)
-    expect(table.state).toEqual(createState())
-  })
-
-  it('勝者が出ないまま全マス埋まり引き分けで終局する', () => {
-    const table = createTable()
-    const x = table.join()
-    const o = table.join()
-
-    // 途中で 3 つそろわない順序で全マスを埋める
-    //  X O X
-    //  X O O
-    //  O X X
-    const sequence: ReadonlyArray<[Mark | null, number]> = [
-      [x, 0],
-      [o, 1],
-      [x, 2],
-      [o, 4],
-      [x, 3],
-      [o, 5],
-      [x, 7],
-      [o, 6],
-      [x, 8],
-    ]
-    for (const [mark, index] of sequence) {
-      expect(table.act(mark, move(index))).toBe(true)
-    }
-
-    expect(table.state.winner).toBeNull()
-    expect(table.state.board.every((cell) => cell !== null)).toBe(true)
+    expect(table.state).toEqual(createState()) // まっさらに戻る
   })
 })
 

@@ -6,20 +6,29 @@ import { z } from 'zod'
 export const markSchema = z.enum(['X', 'O'])
 export const cellSchema = markSchema.nullable() // 空マスは null
 
+// ゲームの進行フェーズ。ready=両者スタート待ち / playing=対戦中 / finished=決着
+export const phaseSchema = z.enum(['ready', 'playing', 'finished'])
+
 export const gameStateSchema = z.object({
-  board: z.array(cellSchema).length(9), // 9 マス (0〜8)
-  turn: markSchema, // 次の手番
+  phase: phaseSchema,
+  board: z.array(cellSchema).length(9), // 確定したマス (9 マス, 0〜8)
+  meters: z.array(z.number().int()).length(9), // 各マスの綱引きゲージ (正=X寄り / 負=O寄り)
+  ready: z.object({ X: z.boolean(), O: z.boolean() }), // 各プレイヤーがスタートを押したか
   winner: markSchema.nullable(), // 勝者 (未決着は null)
 })
 
 // --- クライアント → サーバ (untrusted: 受信時に必ず検証する) ---
-export const moveSchema = z.object({
-  type: z.literal('move'),
+// tap = マスを 1 回連打する。閾値まで貯めた側がそのマスを獲得する。
+export const tapSchema = z.object({
+  type: z.literal('tap'),
   index: z.number().int().min(0).max(8),
 })
+// ready = スタートを押す。両プレイヤーが押すと同時に playing へ (同時スタート)。
+export const readySchema = z.object({ type: z.literal('ready') })
 export const resetSchema = z.object({ type: z.literal('reset') })
 export const actionSchema = z.discriminatedUnion('type', [
-  moveSchema,
+  tapSchema,
+  readySchema,
   resetSchema,
 ])
 

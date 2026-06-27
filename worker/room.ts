@@ -51,10 +51,11 @@ export class RoomDO extends DurableObject<Env> {
     // 受信メッセージは untrusted。Zod で検証し、不正なら無視する。
     const parsed = actionSchema.safeParse(tryJson(raw as string))
     if (!parsed.success) return
-    // 権限チェック: 観戦者や手番でないプレイヤーの操作は無視
+    // 権限チェック: 観戦者や、フェーズに合わない操作は無視
     const mark = ws.deserializeAttachment() as Mark | null
-    if (!canAct(parsed.data, mark, this.state)) return
-    this.state = reduce(this.state, parsed.data)
+    if (!mark || !canAct(parsed.data, mark, this.state)) return
+    // 着手者のマーク (mark) を渡す。競合は WS 受信順 = この処理順で解決される。
+    this.state = reduce(this.state, parsed.data, mark)
     await this.ctx.storage.put('state', this.state) // 先に永続化してから配信
     this.broadcast()
   }

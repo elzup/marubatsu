@@ -1,5 +1,6 @@
 {
-  "name": "marubatsu",
+  // simple 版 (marubatsu) とは別の Worker としてデプロイする。
+  "name": "speed-marubatsu",
   "main": "worker/index.ts",
   "compatibility_date": "2025-06-01",
   // React のビルド成果物を静的配信。asset に無いパス (/ws) は Worker が処理する。

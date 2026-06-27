@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { FaXmark, FaRegCircle } from 'react-icons/fa6'
 import {
   playerLabel,
+  TAPS_TO_CLAIM,
   type Mark,
   type GameState,
   type Action,
@@ -35,7 +36,12 @@ export function App() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-slate-100 p-6 text-slate-800">
-      <h1 className="text-2xl font-bold tracking-tight">マルバツ</h1>
+      <h1 className="text-2xl font-bold tracking-tight">
+        スピードマルバツ
+        <span className="ml-2 text-sm font-normal text-slate-400">
+          連打でマスを奪え
+        </span>
+      </h1>
 
       {/* key={room} で room 変更時に作り直し、入力欄を新しい room に初期化する */}
       <RoomBar key={room} room={room} onChange={changeRoom} />
@@ -175,52 +181,130 @@ function Board({
   mark: Mark | null
   send: (action: Action) => void
 }) {
-  const { board, turn, winner } = state
-  const isMyTurn = mark !== null && mark === turn && !winner
+  // スタート待ち中は「よーいドン」の準備画面を出す
+  if (state.phase === 'ready') {
+    return <ReadyView mark={mark} ready={state.ready} send={send} />
+  }
 
-  // 勝敗の表示は「自分から見て」出す。観戦者は中立に勝者を伝える。
-  // (全員に「勝者: ◯◯ 🎉」を出すと、負けた側が勝ったと勘違いするため)
+  const { phase, board, meters, winner } = state
+  const isPlayer = mark !== null
+
+  // 勝敗は「自分から見て」出す。観戦者には中立に勝者を伝える。
   const label = winner
     ? mark === winner
       ? 'あなたの勝ち 🎉'
       : mark === null
         ? `${playerLabel(winner)} (${winner}) の勝ち`
         : 'あなたの負け…'
-    : board.every(Boolean)
+    : phase === 'finished'
       ? '引き分け'
-      : `手番: ${playerLabel(turn)} (${turn})`
+      : '連打でマスを奪え！'
 
   return (
     <>
-      <p className="text-lg font-medium">
-        {label}
-        {isMyTurn && (
-          <span className="ml-2 text-sm font-semibold text-emerald-600">
-            あなたの番
-          </span>
-        )}
-      </p>
+      <p className="text-lg font-medium">{label}</p>
 
       <div className="grid grid-cols-3 gap-2">
         {board.map((cell, i) => (
-          <button
+          <CellButton
             key={i}
-            disabled={!isMyTurn || Boolean(cell)}
-            onClick={() => send({ type: 'move', index: i })}
-            className="flex size-24 items-center justify-center rounded-xl bg-slate-50 text-5xl shadow-inner transition enabled:hover:scale-[1.03] enabled:hover:bg-slate-100 disabled:cursor-not-allowed"
-          >
-            {cell && MARK_ICON[cell]}
-          </button>
+            cell={cell}
+            meter={meters[i]}
+            // 連打できるのは「対戦中・自分がプレイヤー・まだ取られていないマス」だけ
+            disabled={!isPlayer || phase !== 'playing' || Boolean(cell)}
+            onTap={() => send({ type: 'tap', index: i })}
+          />
         ))}
       </div>
 
-      <button
-        onClick={() => send({ type: 'reset' })}
-        disabled={mark === null}
-        className="rounded-lg border border-slate-300 px-5 py-2 text-sm font-medium transition hover:bg-slate-100 active:scale-95 disabled:opacity-40"
-      >
-        リセット
-      </button>
+      {phase === 'finished' && (
+        <button
+          onClick={() => send({ type: 'reset' })}
+          disabled={!isPlayer}
+          className="rounded-lg border border-slate-300 px-5 py-2 text-sm font-medium transition hover:bg-slate-100 active:scale-95 disabled:opacity-40"
+        >
+          もう一度
+        </button>
+      )}
     </>
+  )
+}
+
+// 1 マス。連打ゲージ (綱引き) を下から伸びる帯で表し、取られたらマークを出す。
+function CellButton({
+  cell,
+  meter,
+  disabled,
+  onTap,
+}: {
+  cell: Mark | null
+  meter: number
+  disabled: boolean
+  onTap: () => void
+}) {
+  // meter は 正=X寄り / 負=O寄り。±TAPS_TO_CLAIM で満タン。
+  const ratio = Math.min(Math.abs(meter) / TAPS_TO_CLAIM, 1)
+  const fill = meter > 0 ? 'bg-rose-200' : meter < 0 ? 'bg-sky-200' : ''
+
+  return (
+    <button
+      disabled={disabled}
+      onClick={onTap}
+      className="relative flex size-24 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-5xl shadow-inner transition enabled:hover:bg-slate-100 enabled:active:scale-95 disabled:cursor-not-allowed"
+    >
+      {!cell && ratio > 0 && (
+        <span
+          className={`absolute inset-x-0 bottom-0 ${fill}`}
+          style={{ height: `${ratio * 100}%` }}
+        />
+      )}
+      <span className="relative">{cell && MARK_ICON[cell]}</span>
+    </button>
+  )
+}
+
+// 同時スタートの準備画面。両者が「スタート」を押すと server が同時に playing へ。
+function ReadyView({
+  mark,
+  ready,
+  send,
+}: {
+  mark: Mark | null
+  ready: { X: boolean; O: boolean }
+  send: (action: Action) => void
+}) {
+  const youReady = mark ? ready[mark] : false
+
+  const badge = (seatMark: Mark) => (
+    <span className="flex items-center gap-1.5 text-sm">
+      <span className={ready[seatMark] ? 'text-emerald-500' : 'text-slate-300'}>
+        ●
+      </span>
+      {playerLabel(seatMark)} ({seatMark}) {ready[seatMark] ? '準備OK' : '…'}
+    </span>
+  )
+
+  return (
+    <div className="flex flex-col items-center gap-5 py-6">
+      <p className="text-lg font-medium">スタート待ち</p>
+      <div className="flex gap-5">
+        {badge('X')}
+        {badge('O')}
+      </div>
+
+      {mark ? (
+        <button
+          onClick={() => send({ type: 'ready' })}
+          disabled={youReady}
+          className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-95 disabled:bg-slate-300"
+        >
+          {youReady ? '相手を待っています…' : 'スタート'}
+        </button>
+      ) : (
+        <p className="text-slate-400">観戦中</p>
+      )}
+
+      <p className="text-xs text-slate-400">両者が押すと同時に始まります</p>
+    </div>
   )
 }
