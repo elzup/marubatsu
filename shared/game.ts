@@ -82,8 +82,38 @@ const calcWinner = (board: Cell[]): Mark | null => {
   return null
 }
 
-// すべての state 更新はこの 1 関数に集約する (純粋・不変)。
-// 元の state は書き換えず、必ず新しいオブジェクトを返す。
+// --- 各アクションの処理 (純粋・不変)。元の state は書き換えず新オブジェクトを返す ---
+// 変化が無いときは同じ参照をそのまま返す (呼び出し側が「効いたか」を === で判定できる)。
+
+// ready: スタート待ち中のみ。両者が押した瞬間に playing へ = 同時スタート。
+const applyReady = (state: GameState, by: Mark): GameState => {
+  if (state.phase !== 'ready') return state
+  const ready = { ...state.ready, [by]: true }
+  const phase = ready.X && ready.O ? 'playing' : 'ready'
+  return { ...state, ready, phase }
+}
+
+// tap: 綱引きゲージを X:+1 / O:-1 動かし、±閾値に届いたマスを獲得する。
+const applyTap = (state: GameState, index: number, by: Mark): GameState => {
+  if (state.phase !== 'playing') return state
+  // 既に確定したマスは触れない
+  if (state.board[index]) return state
+
+  const value = state.meters[index] + (by === 'X' ? 1 : -1)
+  const claimed: Mark | null =
+    value >= TAPS_TO_CLAIM ? 'X' : value <= -TAPS_TO_CLAIM ? 'O' : null
+
+  const meters = state.meters.map((m, i) => (i === index ? value : m))
+  const board = claimed
+    ? state.board.map((cell, i) => (i === index ? claimed : cell))
+    : state.board
+  const winner = claimed ? calcWinner(board) : null
+  // 勝者が出る or 全マス埋まり (引き分け) で決着
+  const phase = winner || board.every(Boolean) ? 'finished' : 'playing'
+  return { ...state, board, meters, winner, phase }
+}
+
+// すべての state 更新はこの 1 関数を入口に集約する。中身はアクション別の関数に振り分けるだけ。
 // by = その操作をしたプレイヤーのマーク (server が socket の席から渡す)。
 export const reduce = (
   state: GameState,
@@ -93,36 +123,10 @@ export const reduce = (
   switch (action.type) {
     case 'reset':
       return createState()
-
-    case 'ready': {
-      // スタート待ち中のみ。両者が押した瞬間に playing へ = 同時スタート。
-      if (state.phase !== 'ready') return state
-      const ready = { ...state.ready, [by]: true }
-      const phase = ready.X && ready.O ? 'playing' : 'ready'
-      return { ...state, ready, phase }
-    }
-
-    case 'tap': {
-      if (state.phase !== 'playing') return state
-      const { index } = action
-      // 既に確定したマスは触れない (state を変えず同じ参照を返す)
-      if (state.board[index]) return state
-
-      // 綱引き: X は +1 / O は -1 を積む。±閾値に届いた側がマスを獲得。
-      const value = state.meters[index] + (by === 'X' ? 1 : -1)
-      const claimed: Mark | null =
-        value >= TAPS_TO_CLAIM ? 'X' : value <= -TAPS_TO_CLAIM ? 'O' : null
-
-      const meters = state.meters.map((m, i) => (i === index ? value : m))
-      const board = claimed
-        ? state.board.map((cell, i) => (i === index ? claimed : cell))
-        : state.board
-      const winner = claimed ? calcWinner(board) : null
-      // 勝者が出る or 全マス埋まり (引き分け) で決着
-      const phase = winner || board.every(Boolean) ? 'finished' : 'playing'
-      return { ...state, board, meters, winner, phase }
-    }
-
+    case 'ready':
+      return applyReady(state, by)
+    case 'tap':
+      return applyTap(state, action.index, by)
     default:
       return state
   }
